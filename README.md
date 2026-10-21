@@ -1,6 +1,6 @@
 # code-skills
 
-Personal collection of [Claude Code](https://claude.com/claude-code) skills, an agent, and a
+Personal collection of [Claude Code](https://claude.com/claude-code) skills, an agent, an output style, and a
 hook. Everything here is generic — no private data, credentials, or project-specific paths.
 
 ## Contents
@@ -12,12 +12,19 @@ hook. Everything here is generic — no private data, credentials, or project-sp
 | **ralph-loop** | Start (or resume) a fresh-context "ralph" loop on a spec or plan, gated by an executable definition of done. `ralph-loop.sh` runs `claude -p` repeatedly — one plan task per iteration, fresh context each time — until `dod.sh` is green or the loop is blocked. |
 | **swarm-loop** | Review whether a goal suits a swarm, then initialise and run parallel research lanes — open-ended search over any target with a locked scorer. |
 | **swarm-collab** | Run many communicating `claude -p` agents (strategist / implementor / critic) that share a bounded blackboard to search an unplannable build-and-measure problem against a locked scorer. Includes the `swarmcollab` Python package and its test suite. |
+| **concise** | Make replies short and literal with ASD-STE100 (Simplified Technical English) rules: short sentences, complete facts, a fixed answer shape, no filler. |
 
 ### Agent (`agents/`)
 
 | Agent | What it does |
 |-------|--------------|
 | **silent-failure-hunter** | Reviews code for silent failures, swallowed errors, bad fallbacks, and missing error propagation. Adapted from [affaan-m/ecc](https://github.com/affaan-m/ecc) (MIT). |
+
+### Output style (`output-styles/`)
+
+| Output style | What it does |
+|--------------|--------------|
+| **concise** (`Concise STE`) | The `concise` skill rules as an always-on output style. Select it with `/output-style`. |
 
 ### Hook (`hooks/`)
 
@@ -31,10 +38,14 @@ These live under `~/.claude/`. To use them, copy (or symlink) each directory int
 
 ```sh
 # Skills
-cp -R skills/ralph-loop skills/swarm-loop skills/swarm-collab ~/.claude/skills/
+cp -R skills/ralph-loop skills/swarm-loop skills/swarm-collab skills/concise ~/.claude/skills/
 
 # Agent
 cp agents/silent-failure-hunter.md ~/.claude/agents/
+
+# Output style
+mkdir -p ~/.claude/output-styles
+cp output-styles/concise.md ~/.claude/output-styles/
 
 # Hook
 cp hooks/block-dangerous-git.sh ~/.claude/hooks/
