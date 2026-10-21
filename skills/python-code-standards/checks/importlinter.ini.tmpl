@@ -1,0 +1,24 @@
+# Rendered by scripts/check.sh into a temp file; never written into the target repo.
+# Placeholders: {{ROOT}} = package root (e.g. app), {{ROUTERS}} {{SERVICES}} {{REPOS}} {{MODELS}} = detected layer modules.
+[importlinter]
+root_package = {{ROOT}}
+include_external_packages = True
+
+[importlinter:contract:layers]
+name = Layered architecture: routers -> services -> repos -> models
+type = layers
+layers =
+    {{ROUTERS}}
+    {{SERVICES}}
+    {{REPOS}}
+    {{MODELS}}
+
+[importlinter:contract:routers-thin]
+name = Routers never import repos or sqlalchemy directly
+type = forbidden
+source_modules =
+    {{ROUTERS}}
+forbidden_modules =
+    {{REPOS}}
+    sqlalchemy
+allow_indirect_imports = True

@@ -1,0 +1,30 @@
+{
+  "_comment": "Merge into ~/.claude/settings.json (global) or <repo>/.claude/settings.json. check.sh writes nothing to the repo. Pick ONE of the two hooks below.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "_comment": "After every Edit/Write of a .py file, lint just that file with the packaged rules; non-zero exit surfaces the findings to the model.",
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.py) bash ~/.claude/skills/python-code-standards/scripts/check.sh \"$(git -C \"$(dirname \"$f\")\" rev-parse --show-toplevel 2>/dev/null || pwd)\" --hook \"$f\";; esac",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "_comment": "Alternative: one full mechanical scan of the repo when the model finishes a turn.",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/skills/python-code-standards/scripts/check.sh \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" --hook",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}

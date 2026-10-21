@@ -13,6 +13,7 @@ hook. Everything here is generic — no private data, credentials, or project-sp
 | **swarm-loop** | Review whether a goal suits a swarm, then initialise and run parallel research lanes — open-ended search over any target with a locked scorer. |
 | **swarm-collab** | Run many communicating `claude -p` agents (strategist / implementor / critic) that share a bounded blackboard to search an unplannable build-and-measure problem against a locked scorer. Includes the `swarmcollab` Python package and its test suite. |
 | **concise** | Make replies short and literal with ASD-STE100 (Simplified Technical English) rules: short sentences, complete facts, a fixed answer shape, no filler. |
+| **python-code-standards** | Bring a Python repo (especially FastAPI/SQLAlchemy/pydantic) into line with a structuring ethos: mechanical rules by packaged checks (ruff, import-linter, greps — nothing written to the target repo), judgement rules by a reviewed, approval-gated refactor plan. Includes an optional `PostToolUse`/`Stop` hook snippet. Requires [`uv`](https://docs.astral.sh/uv/). |
 
 ### Agent (`agents/`)
 
@@ -38,7 +39,7 @@ These live under `~/.claude/`. To use them, copy (or symlink) each directory int
 
 ```sh
 # Skills
-cp -R skills/ralph-loop skills/swarm-loop skills/swarm-collab skills/concise ~/.claude/skills/
+cp -R skills/ralph-loop skills/swarm-loop skills/swarm-collab skills/concise skills/python-code-standards ~/.claude/skills/
 
 # Agent
 cp agents/silent-failure-hunter.md ~/.claude/agents/

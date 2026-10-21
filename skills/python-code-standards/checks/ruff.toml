@@ -1,0 +1,68 @@
+# Packaged ruff config for python-code-standards. Passed via `ruff check --config <this file>`,
+# which REPLACES the target repo's own ruff configuration for the run (nothing is written to the repo).
+line-length = 120
+target-version = "py312"
+extend-exclude = ["alembic", "migrations", ".venv", "node_modules"]
+
+[lint]
+# No `D` (pydocstyle): the ethos wants FEWER docstrings, not more. The name carries the meaning.
+# `select`, not `extend-select`: with a --config file ruff 0.16 extends a wider default set (EXE, FURB, S, TRY...).
+select = [
+    "E", "W", "F", "I", "UP", "B", "SIM", "C4", "G", "LOG", "ASYNC", "RUF",
+    "PLC0415", # import-outside-toplevel: imports live at module top
+    "TID251",  # banned-api: HTTPException outside the handler module; dataclass outside schemas
+    "BLE001",  # blind `except Exception`: every one must be classified fatal vs transient
+    # conciseness — the rules that make a function shorter
+    "C901",    # complexity ceiling (see mccabe)
+    "PLR0911", "PLR0912", "PLR0913", "PLR0915", # returns / branches / args / statements ceilings
+    "RET",     # no `else` after return, no `return None` noise, no assign-then-return
+    "PERF401", "PERF402", # accumulator loop -> comprehension / list(...)
+    "FBT",     # boolean trap: flags are keyword-only
+    "PLR2004", # magic value in a comparison -> constants/ or an enum (str included, see below)
+    "ERA001",  # commented-out code is deleted, not kept
+    "T20",     # print/pprint: use logging
+]
+ignore = [
+    "UP042",    # (str, Enum) kept deliberately in some repos
+    "ASYNC109", # async clients take a `timeout` passed straight to httpx
+    "RUF003",   # ambiguous unicode in prose comments
+]
+
+[lint.mccabe]
+max-complexity = 10
+
+[lint.pylint]
+max-args = 6          # more than six params is a missing value object (StrictModel) or a missing provider
+max-returns = 6       # early returns are encouraged; a seventh is a dispatch table
+max-branches = 10
+max-statements = 40
+allow-magic-value-types = ["bytes"]  # strings count: `status == "active"` is a missing StrEnum
+
+[lint.per-file-ignores]
+"**/tests/**" = ["PLR2004", "PLR0913", "FBT", "ERA001", "T20"]
+"**/test_*.py" = ["PLR2004", "PLR0913", "FBT", "ERA001", "T20"]
+"**/conftest.py" = ["PLR0913", "FBT"]
+"**/scripts/**" = ["T20"]
+"**/error_handlers.py" = ["PLR2004"]  # SQLSTATE / status tables live here by design
+
+[lint.isort]
+split-on-trailing-comma = false  # must agree with format.skip-magic-trailing-comma
+
+[lint.flake8-tidy-imports.banned-api]
+"fastapi.HTTPException".msg = "Raise a domain error (exceptions.py); only the global error-handler module may import HTTPException."
+"dataclasses.dataclass".msg = "Type classes are pydantic models in schemas/ (StrictModel for internal value types); dataclasses only in an exempt subtree."
+
+[lint.flake8-boolean-trap]
+# FastAPI parameter markers take positional booleans by design (Query(False) etc.).
+extend-allowed-calls = ["fastapi.Query", "fastapi.Body", "fastapi.Header", "fastapi.Form", "pydantic.Field"]
+
+[lint.flake8-bugbear]
+# FastAPI dependency-injection markers are calls-in-defaults by design.
+extend-immutable-calls = [
+    "fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.Header",
+    "fastapi.Body", "fastapi.Form", "fastapi.File", "fastapi.Security", "fastapi.Cookie",
+]
+
+[format]
+docstring-code-format = true
+skip-magic-trailing-comma = true
