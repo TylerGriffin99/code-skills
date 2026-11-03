@@ -18,7 +18,7 @@ PYPROJECT=$(find . -maxdepth 2 -name pyproject.toml -not -path '*/node_modules/*
 echo "PYPROJECT: ${PYPROJECT:-none}"
 
 deps=$(cat ${PYPROJECT:-/dev/null} requirements*.txt 2>/dev/null | tr 'A-Z' 'a-z')
-for pkg in fastapi pydantic sqlalchemy httpx pydantic-ai; do
+for pkg in fastapi pydantic pydantic-settings sqlalchemy httpx; do
   if printf '%s' "$deps" | grep -q "\"$pkg\|^$pkg\|'$pkg"; then echo "$pkg: yes"; else echo "$pkg: no"; fi
 done
 
@@ -30,13 +30,16 @@ layer() { # name, candidates... — a layer may be a package dir or a single mod
   done
   echo "LAYER_$name: none"
 }
-layer ROUTERS routers controllers api/routes api
+layer ROUTES routes routers controllers api/routes api
 layer SERVICES services
 layer REPOS repos repositories dal
 layer MODELS models db/models
+layer DATABASE database db
 layer SCHEMAS schemas
 layer CLIENTS clients
+layer UTILS utils
 [ -d "$SRC/prompts" ] && echo "PROMPTS_DIR: $SRC/prompts" || echo "PROMPTS_DIR: none"
+[ -d scripts ] && echo "SCRIPTS_DIR: scripts" || echo "SCRIPTS_DIR: none"
 
 # Test command
 if [ -f justfile ] && grep -qE '^test' justfile; then echo "TEST_CMD: just test";
@@ -45,12 +48,13 @@ elif [ -d tests ] || ls test_*.py >/dev/null 2>&1; then
   if [ -f uv.lock ] || grep -q '^\[tool\.uv\]' pyproject.toml 2>/dev/null; then echo "TEST_CMD: uv run pytest -q"; else echo "TEST_CMD: python -m pytest -q"; fi;
 else echo "TEST_CMD: none"; fi
 [ -f .env ] && echo "ENV_FILE: .env (tests may need --env-file .env)" || echo "ENV_FILE: none"
+[ -x .venv/bin/python ] && echo "VENV_PYTHON: .venv/bin/python" || echo "VENV_PYTHON: none"
 
 # Existing guardrails
 grep -q '\[tool.ruff' ${PYPROJECT:-/dev/null} 2>/dev/null && echo "REPO_RUFF_CONFIG: yes" || { [ -f ruff.toml ] && echo "REPO_RUFF_CONFIG: yes (ruff.toml)" || echo "REPO_RUFF_CONFIG: no"; }
 grep -qE '\[tool\.(ty|mypy|pyright)' ${PYPROJECT:-/dev/null} 2>/dev/null && echo "REPO_TYPECHECK_CONFIG: yes" || echo "REPO_TYPECHECK_CONFIG: no"
 [ -f .pre-commit-config.yaml ] && echo "PRE_COMMIT: yes" || echo "PRE_COMMIT: no"
 ls .github/workflows/*.y*ml >/dev/null 2>&1 && echo "CI: yes (.github/workflows)" || { [ -f .gitlab-ci.yml ] && echo "CI: yes (gitlab)" || echo "CI: no"; }
-[ -f .importlinter ] || grep -q 'importlinter' ${PYPROJECT:-/dev/null} 2>/dev/null && echo "IMPORT_LINTER: yes" || echo "IMPORT_LINTER: no"
+{ [ -f .importlinter ] || grep -q 'importlinter' ${PYPROJECT:-/dev/null} 2>/dev/null; } && echo "IMPORT_LINTER: yes" || echo "IMPORT_LINTER: no"
 echo "PY_FILES: $(find "${SRC:-.}" -name '*.py' -not -path '*/.venv/*' | wc -l | tr -d ' ')"
-echo "DETECT_PROTO: 1"
+echo "DETECT_PROTO: 2"

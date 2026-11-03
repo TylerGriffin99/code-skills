@@ -4,7 +4,7 @@ Write the plan to a FILE: the repo's plan location if one exists (e.g. `docs/sup
 
 **Red baseline:** when step 4 found the test command failing or unrunnable, Task 1 is "make the repo's own tests run" (pythonpath, missing dev deps, env file) — the exact failure text goes in the task. Editing the repo's own `pyproject.toml` test section for this is in scope; adding lint/standards config that duplicates `checks/` is not. Nothing else may start until it is green.
 
-**Missing layers:** when `detect.sh` reports a layer as `none`, the plan creates it at the conventional path under `ROOT_PKG`: `schemas/`, `clients/`, `constants/`, `exceptions.py`, `error_handlers.py`, `dependencies.py`. Name the path in the task that creates it.
+**Missing layers:** when `detect.sh` reports a layer as `none`, the plan creates it at its path in the structure in `standards.md` (`routes/`, `services/`, `repos/`, `schemas/`, `models/`, `database/`, `clients/`, `utils/`, `constants.py`, `exceptions.py`, `bootstrap.py`, and for FastAPI `dependencies.py`, `error_handlers.py`). Copy the file from `templates/` when one exists. Name the path in the task that creates it.
 
 ## Order of tasks
 
@@ -14,15 +14,15 @@ Dependency order that keeps every commit green and bisectable. A task with no ca
 2. **Format** — if the repo is not ruff-formatted, run the formatter as its **own commit** (large, mechanical, must stay bisectable from real changes).
 3. **Characterisation tests** — pin current behaviour of every candidate that lacks a covering test (recipe pins in `refactor-recipes.md`). Own commit.
 4. **Dead code sweep** — delete the certain set with importer evidence; list the uncertain set for the user. Early, so later tasks never work around dangling imports.
-5. **Constants and enums** — `constants/` package: one `StrEnum` per closed string set found by `PLR2004`/`LITERAL_SET_COMPARE`, `Final` for magic numbers, `Annotated` scalar aliases in `schemas/common.py`. Replace literals at every site (recipe 13). Own commit; wire format unchanged.
-6. **Shared utilities** — `StrictModel`, `RetryPolicy`, `retry_async`, `bounded_gather`, `load_prompt`, `require`. Each TDD, each its own commit.
-7. **Clients** — client class per upstream + the test bridge (`fake_client`) so existing tests change one line. Delete the old module only after grepping tests for its seam names.
-8. **Orchestration rewrite** — the module that used closures/private helpers, on top of 6 and 7; a class whose only state is one collaborator becomes functions taking it. Preserve every log substring tests assert. **Run `silent-failure-hunter` on the diff after this task.**
-9. **Errors** — `exceptions.py` (+ `require`) + `error_handlers.py` + `get_db` rollback (TDD table test), then services → domain errors (mechanical sed + hand edits for multi-line sites; message text byte-identical; `require()` at every `if not x: raise` site — recipe 11).
-10. **Providers + controllers + DTOs** — `dependencies.py` providers for every `CONSTRUCTED_IN_PLACE` finding (recipe 12); thin routers, new services for logic that lived in routers, `from_*`/`to_*` in `schemas/`, `response_model` everywhere; one commit per use case (`COMMIT_OUTSIDE_SERVICE`). JSON shape compared old vs new in the task report.
-11. **Schemas** — remaining dataclasses → pydantic in `schemas/`; DB model audit (report only unless something is off).
+5. **Constants and enums** — `constants.py`: one `StrEnum` per closed string set found by `PLR2004`/`LITERAL_SET_COMPARE`, `Final` for magic numbers, `Annotated` scalar aliases in `schemas/common.py`. Replace literals at every site (recipe 12). Own commit; wire format unchanged.
+6. **Shared utilities** — copy from `templates/core`: `StrictModel`, `RetryPolicy` + `retry_async`, `bounded_gather`, `Clock`/`IdFactory`, `UtcDateTime`, `require`, with their tests; `load_prompt` if the repo has prompts. Own commit.
+7. **Composition root + clients** — `bootstrap.py` with `Resources` and `open_resources`; one port + client class per upstream with a pooled HTTP client built in `open_resources` (recipe 4); one fake per port in `tests/fakes/`. Delete the old module only after grepping tests for its seam names.
+8. **Orchestration rewrite** — the module that used closures/private helpers, on top of 6 and 7 (recipes 5, 7). Preserve every log substring tests assert. **Run `silent-failure-hunter` on the diff after this task.**
+9. **Errors** — `exceptions.py` (+ `require`) + `error_handlers.py` + `session_scope` rollback (table test from `templates/fastapi`), then services → domain errors (message text byte-identical; `require()` at every `if not x: raise` site — recipes 1, 10).
+10. **Injection + routes + DTOs** — constructor injection and providers for every `CONSTRUCTED_IN_PLACE`, `HTTP_CLIENT_PER_CALL` and `CLOCK_NOT_INJECTED` finding (recipe 11); thin routes, new service methods for logic that lived in routes, `response_model` everywhere (recipe 2); one commit per use case (`COMMIT_OUTSIDE_SERVICE`). JSON shape compared old vs new in the task report.
+11. **Schemas** — remaining dataclasses → `StrictModel` in `schemas/` or plain handle-holder classes (recipe 3); DB model audit (report only unless something is off).
 12. **Versioning** — config-driven prefix; tests, scripts, seeds, frontend.
-13. **Conciseness pass** — every `C901`/`PLR09xx`/`FBT`/`RET`/`PERF` finding: split, bundle args into a `StrictModel`, make booleans keyword-only, early-return; delete paraphrasing docstrings and `what` comments (`ERA001`, `T20`). `@dataclass` constructor conversions. No behaviour change; pinned by the characterisation tests from Task 3.
+13. **Types and conciseness** — every `MYPY` and `ANN` finding; every `C901`/`PLR09xx`/`FBT`/`RET`/`PERF` finding: split, bundle args into a `StrictModel`, make booleans keyword-only, early-return; delete paraphrasing docstrings and `what` comments (`ERA001`, `T20`). No behaviour change; pinned by the characterisation tests from Task 3.
 14. **Verification** — full gate, whole-branch review, hunter on the full diff, hand-off summary with every ruling.
 
 ## Task shape
