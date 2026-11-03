@@ -14,7 +14,8 @@ done
 echo "SRC_DIR: ${SRC:-unknown}"
 ROOT_PKG=$(basename "${SRC:-unknown}")
 echo "ROOT_PKG: $ROOT_PKG"
-PYPROJECT=$(find . -maxdepth 2 -name pyproject.toml -not -path '*/node_modules/*' | head -1)
+if [ -f pyproject.toml ]; then PYPROJECT=./pyproject.toml
+else PYPROJECT=$(find . -maxdepth 2 -name pyproject.toml -not -path '*/node_modules/*' -not -path '*/.venv/*' | sort | head -1); fi
 echo "PYPROJECT: ${PYPROJECT:-none}"
 
 deps=$(cat ${PYPROJECT:-/dev/null} requirements*.txt 2>/dev/null | tr 'A-Z' 'a-z')
@@ -48,7 +49,12 @@ elif [ -d tests ] || ls test_*.py >/dev/null 2>&1; then
   if [ -f uv.lock ] || grep -q '^\[tool\.uv\]' pyproject.toml 2>/dev/null; then echo "TEST_CMD: uv run pytest -q"; else echo "TEST_CMD: python -m pytest -q"; fi;
 else echo "TEST_CMD: none"; fi
 [ -f .env ] && echo "ENV_FILE: .env (tests may need --env-file .env)" || echo "ENV_FILE: none"
-[ -x .venv/bin/python ] && echo "VENV_PYTHON: .venv/bin/python" || echo "VENV_PYTHON: none"
+# Interpreter whose site-packages mypy resolves imports from: PCS_PYTHON, then .venv, venv, an active VIRTUAL_ENV.
+VENV_PY=none
+for py in "${PCS_PYTHON:-}" .venv/bin/python venv/bin/python "${VIRTUAL_ENV:+$VIRTUAL_ENV/bin/python}"; do
+  [ -n "$py" ] && [ -x "$py" ] && { VENV_PY="$py"; break; }
+done
+echo "VENV_PYTHON: $VENV_PY"
 
 # Existing guardrails
 grep -q '\[tool.ruff' ${PYPROJECT:-/dev/null} 2>/dev/null && echo "REPO_RUFF_CONFIG: yes" || { [ -f ruff.toml ] && echo "REPO_RUFF_CONFIG: yes (ruff.toml)" || echo "REPO_RUFF_CONFIG: no"; }

@@ -62,7 +62,7 @@ When time is short, keep the order above and cut scope, not structure: fewer use
 - [ ] Every external boundary has a Protocol port and a fake in `tests/fakes/`; nothing else has an interface.
 - [ ] Every retry has a test for retry count and for fatal = one call; every retried POST has an idempotency key.
 - [ ] Domain errors carry no HTTP status; every error body is `{"detail": ...}` with no SQL.
-- [ ] Each service method commits once; repos only flush.
+- [ ] Services own every commit (before and after each external call); repos only flush.
 - [ ] No string literal for a closed set; no naive datetime.
 - [ ] README states run commands, decisions with trade-offs, and what is left out.
 - [ ] No leftover example-slice code that the task does not need.

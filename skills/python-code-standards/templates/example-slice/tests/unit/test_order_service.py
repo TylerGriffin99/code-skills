@@ -32,12 +32,16 @@ async def test_place_order_charges_once_and_marks_paid(session: AsyncSession) ->
     assert payments.charges == [(ORDER_ID, 500)]
 
 
-async def test_failed_charge_propagates_and_saves_nothing(session: AsyncSession) -> None:
+async def test_failed_charge_propagates_and_leaves_order_pending(session: AsyncSession) -> None:
     service = build_service(session, FakePaymentGateway(fail_with=UpstreamError("Payment provider unavailable")))
 
     with pytest.raises(UpstreamError):
         await service.place_order(CreateOrderRequest(amount_cents=500))
     await session.rollback()
 
+    assert (await service.get_order(ORDER_ID)).status is OrderStatus.PENDING
+
+
+async def test_unknown_order_raises_not_found(session: AsyncSession) -> None:
     with pytest.raises(NotFoundError, match="Order not found"):
-        await service.get_order(ORDER_ID)
+        await build_service(session, FakePaymentGateway()).get_order(ORDER_ID)

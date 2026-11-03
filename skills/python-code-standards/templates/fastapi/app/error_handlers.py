@@ -33,11 +33,15 @@ STATUS_BY_ERROR: Final[dict[type[Exception], int]] = {
     OperationalError: 503,
     InterfaceError: 503,
     TimeoutError: 503,
-    httpx.HTTPStatusError: 502,
+    httpx.HTTPError: 502,
 }
 HEADERS_BY_ERROR: Final[dict[type[Exception], dict[str, str]]] = {UnauthorizedError: {"WWW-Authenticate": "Bearer"}}
 FOREIGN_KEY_OR_UNIQUE: Final = frozenset({"23503", "23505"})
 INTERNAL_ERROR_DETAIL: Final = "Internal server error"
+UNAVAILABLE_DETAIL: Final = "Service unavailable"
+UPSTREAM_DETAIL: Final = "Upstream service error"
+# Infrastructure errors get a fixed detail: their driver message names hosts, ports and users.
+FIXED_DETAIL_ERRORS: Final = (OperationalError, InterfaceError, TimeoutError)
 
 
 def lookup[V](table: dict[type[Exception], V], exc: Exception) -> V | None:
@@ -52,22 +56,25 @@ def driver_message(exc: Exception) -> str:
 
 def integrity_status(exc: IntegrityError) -> int:
     sqlstate = getattr(exc.orig, "sqlstate", None) or getattr(exc.orig, "pgcode", None)
-    if sqlstate is None or sqlstate in FOREIGN_KEY_OR_UNIQUE:
-        return 409
-    return 400
+    return 409 if sqlstate in FOREIGN_KEY_OR_UNIQUE else 400
 
 
 def detail_for(exc: Exception) -> str:
     if isinstance(exc, AppError):
         return exc.detail
-    if isinstance(exc, httpx.HTTPStatusError):
-        return "Upstream service error"
+    if isinstance(exc, httpx.HTTPError):
+        return UPSTREAM_DETAIL
+    if isinstance(exc, FIXED_DETAIL_ERRORS):
+        return UNAVAILABLE_DETAIL
     return driver_message(exc)
 
 
 async def handle_known_error(_request: Request, exc: Exception) -> JSONResponse:
     status = integrity_status(exc) if isinstance(exc, IntegrityError) else lookup(STATUS_BY_ERROR, exc) or 500
-    logger.warning("%s -> %d", type(exc).__name__, status)
+    if status >= 500:
+        logger.error("%s -> %d", type(exc).__name__, status, exc_info=exc)
+    else:
+        logger.warning("%s -> %d", type(exc).__name__, status)
     return JSONResponse({"detail": detail_for(exc)}, status_code=status, headers=lookup(HEADERS_BY_ERROR, exc))
 
 

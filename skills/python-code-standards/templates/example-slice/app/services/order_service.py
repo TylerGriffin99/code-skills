@@ -26,6 +26,9 @@ class OrderService:
             id=self.new_id(), amount_cents=request.amount_cents, status=OrderStatus.PENDING, created_at=self.clock()
         )
         await self.orders.add(order)
+        # Commit before the external call: no transaction stays open while the provider is slow, and a
+        # charge that succeeds is never left without its order row (the order id is the idempotency key).
+        await self.session.commit()
         await self.payments.charge(order_id=order.id, amount_cents=order.amount_cents)
         order.status = OrderStatus.PAID
         await self.session.commit()

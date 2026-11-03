@@ -20,7 +20,9 @@ When unsure, run `bash SKILL_DIR/scripts/check.sh REPO`: a clean or near-clean r
 
 `bash SKILL_DIR/scripts/check.sh REPO` runs ruff (packaged `checks/ruff.toml`), `ruff format --check`, `mypy --strict` (packaged `checks/mypy.ini`, against the repo's `.venv`), import-linter contracts generated from the detected layers, and `checks/greps.sh`. It prints `CHECK_RESULT: clean` or the findings with file:line and rule, and it writes nothing into the repo. Green means `CHECK_RESULT: clean` **and** the repo's test command passing.
 
-**Hook mode:** `check.sh REPO --hook [files...]` prints findings only (ruff, import-linter, greps; no format or mypy) and exits non-zero when any exist. Wire it as a `PostToolUse` hook on `Edit|Write` or as a `Stop` hook — `hooks/settings-snippet.json`.
+A tool that fails to run prints `<tool>: TOOL_ERROR` and fails the gate. mypy resolves imports from `PCS_PYTHON`, `.venv`, `venv` or the active `VIRTUAL_ENV`; with none, it reports `TYPECHECK_SKIPPED` and fails.
+
+**Hook mode:** `check.sh REPO --hook [files...]` prints findings on stderr and exits 2 (Claude Code shows exit-2 stderr to the model). It skips format and mypy; with file arguments it also skips import-linter and reports only findings in those files. Wire it as a `PostToolUse` hook on `Edit|Write` or as a `Stop` hook — `hooks/settings-snippet.json`.
 
 ## Files
 

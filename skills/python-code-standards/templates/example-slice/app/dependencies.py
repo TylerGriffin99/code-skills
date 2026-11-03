@@ -23,7 +23,7 @@ ResourcesDep = Annotated[Resources, Depends(get_resources)]
 
 
 async def get_session(resources: ResourcesDep) -> AsyncIterator[AsyncSession]:
-    async for session in session_scope(resources.session_factory):
+    async with session_scope(resources.session_factory) as session:
         yield session
 
 

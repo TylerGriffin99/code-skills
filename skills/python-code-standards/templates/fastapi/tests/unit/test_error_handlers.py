@@ -25,7 +25,10 @@ CASES: list[tuple[Exception, int, str]] = [
     (AppError("Unmapped domain error"), 500, "Unmapped domain error"),
     (IntegrityError(SECRET_SQL, {}, DriverError("duplicate key\nDETAIL: x", "23505")), 409, "duplicate key"),
     (IntegrityError(SECRET_SQL, {}, DriverError("null value", "23502")), 400, "null value"),
-    (OperationalError(SECRET_SQL, {}, DriverError("", None)), 503, "DriverError"),
+    (IntegrityError(SECRET_SQL, {}, DriverError("NOT NULL constraint failed", None)), 400, "NOT NULL constraint failed"),
+    (OperationalError(SECRET_SQL, {}, DriverError('connection to "db.internal" failed', None)), 503, "Service unavailable"),
+    (TimeoutError(), 503, "Service unavailable"),
+    (httpx.ConnectError("payments.internal unreachable"), 502, "Upstream service error"),
     (RuntimeError("boom with secrets"), 500, "Internal server error"),
 ]
 
@@ -51,6 +54,7 @@ async def test_error_maps_to_status_and_safe_detail(exc: Exception, status: int,
     assert response.json() == {"detail": detail}
     assert "SELECT" not in response.text
     assert "DETAIL" not in response.text
+    assert ".internal" not in response.text
 
 
 async def test_unauthorized_sends_www_authenticate() -> None:
