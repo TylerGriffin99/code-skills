@@ -13,7 +13,7 @@ hook. Everything here is generic — no private data, credentials, or project-sp
 | **swarm-loop** | Review whether a goal suits a swarm, then initialise and run parallel research lanes — open-ended search over any target with a locked scorer. |
 | **swarm-collab** | Run many communicating `claude -p` agents (strategist / implementor / critic) that share a bounded blackboard to search an unplannable build-and-measure problem against a locked scorer. Includes the `swarmcollab` Python package and its test suite. |
 | **concise** | Make replies short and literal with ASD-STE100 (Simplified Technical English) rules: short sentences, complete facts, a fixed answer shape, no filler. |
-| **python-code-standards** | Bring a Python repo (especially FastAPI/SQLAlchemy/pydantic) into line with a structuring ethos: mechanical rules by packaged checks (ruff, import-linter, greps — nothing written to the target repo), judgement rules by a reviewed, approval-gated refactor plan. Includes an optional `PostToolUse`/`Stop` hook snippet. Requires [`uv`](https://docs.astral.sh/uv/). |
+| **python-code-standards** | Tyler's Python standards as one source of truth (project structure, dependency injection with one composition root, Protocol ports with fakes, shared API clients, strict types, domain errors, transaction ownership), with two modes: **build** a new project from tested templates (core, FastAPI overlay, example slice), or **refactor** an existing repo through an approval-gated plan. Packaged checks (ruff, mypy --strict, import-linter, greps) write nothing to the target repo. Includes an optional `PostToolUse`/`Stop` hook snippet. Requires [`uv`](https://docs.astral.sh/uv/). |
 
 ### Agent (`agents/`)
 

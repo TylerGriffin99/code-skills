@@ -1,9 +1,9 @@
 {
-  "_comment": "Merge into ~/.claude/settings.json (global) or <repo>/.claude/settings.json. check.sh writes nothing to the repo. Pick ONE of the two hooks below.",
+  "_comment": "Merge into ~/.claude/settings.json (global) or <repo>/.claude/settings.json. check.sh writes nothing to the repo. Pick ONE of the two hooks below. In --hook mode check.sh prints findings on stderr and exits 2, which Claude Code feeds back to the model.",
   "hooks": {
     "PostToolUse": [
       {
-        "_comment": "After every Edit/Write of a .py file, lint just that file with the packaged rules; non-zero exit surfaces the findings to the model.",
+        "_comment": "After every Edit/Write of a .py file, lint just that file (ruff + greps; no mypy or import-linter, which are whole-repo).",
         "matcher": "Edit|Write",
         "hooks": [
           {
@@ -16,7 +16,7 @@
     ],
     "Stop": [
       {
-        "_comment": "Alternative: one full mechanical scan of the repo when the model finishes a turn.",
+        "_comment": "Alternative: ruff, import-linter and greps over the whole repo when the model finishes a turn.",
         "hooks": [
           {
             "type": "command",
