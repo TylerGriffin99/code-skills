@@ -14,7 +14,10 @@ Keep your own context for decisions; delegate every step that reads a lot of cod
 of output to a subagent (Agent tool, `general-purpose`). It shares your worktree, its environment,
 and its hooks. Give it a complete, self-contained brief — it sees none of your context.
 
-1. **Orient and choose (yourself).** Read your view above: the proposal assigned to you (yours if
+1. **Orient and choose (yourself).** The view leads with the run's record: the latest `retro`
+   entries, the `baseline` and the best and latest `scored` entries (orchestrator-written: commit
+   sha, locked-eval score and detail). To build on a scored commit, start from
+   `git show <its sha>:<file>`. Read your view above: the proposal assigned to you (yours if
    you posted one, otherwise the newest open one), any critiques of it, recent results, and recent
    dead ends. Pick ONE focused change that tests that proposal — or, if it's already been called a
    dead end, a reasoned variation you can justify in your result.

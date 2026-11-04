@@ -68,7 +68,7 @@ the same honesty discipline as `swarm-loop`, and it is non-negotiable.
   implementors in parallel worktrees, scores results, then runs a light council step.
 - **Council** — a small end-of-round step where strategist + critic agents read a digest and set
   the next round's directions; may emit an early-stop signal.
-- **Setup dir** — `<repo>/docs/swarm-collab/<name>/`: human-reviewable configuration and adapters.
+- **Setup dir** — `<project>-swarm-results/<name>/swarm/`: human-reviewable configuration and adapters.
 - **Run dir** — `<setup-dir>/<run-id>/`: the locked copy of the setup plus runtime state.
 
 ## Architecture
@@ -248,8 +248,11 @@ Otherwise the argument is a goal, and the skill runs:
 5. **Init & launch pilot** → `collab.py init` then `start`; brief the human on watch/stop/scale
    commands. Detached; survives the session; stops itself at end of pilot and at budget.
 
-Layout: setup dir `<repo>/docs/swarm-collab/<name>/`; run dir inside it. Reports committed by the
-human; locked copy + runtime state gitignored. Nothing under `~/.claude` except the skill itself.
+Layout: every search lives in one results folder beside the project,
+`<project>-swarm-results/<name>/` (a git worktree of the project, or a purpose-built repo); setup dir
+`<name>/swarm/`; run dir inside it, with the implementor worktrees in `<run-dir>/worktrees/`.
+Reports committed by the human; locked copy + runtime state gitignored. Nothing under `~/.claude`
+except the skill itself.
 
 ## Testing
 

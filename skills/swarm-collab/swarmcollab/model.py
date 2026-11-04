@@ -39,7 +39,9 @@ class Run:
         self.db.executescript(SCHEMA)
         self.repo = Path(self.m["repo"])
         self.run_id = self.m["run_id"]
-        self.lanes_root = self.repo.parent / f"{self.repo.name}-collab-{self.run_id}"
+        # Implementor worktrees live inside the run dir (gitignored by its .gitignore), so a
+        # run never writes anything outside its own folder.
+        self.lanes_root = self.dir / "worktrees"
 
     # meta
     def get(self, key, default=None):

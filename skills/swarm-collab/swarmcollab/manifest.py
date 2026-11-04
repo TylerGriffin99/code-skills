@@ -106,6 +106,8 @@ def validate_manifest(m: dict, draft: Path) -> list:
     else:
         for key in ("strategist_every", "critic_every", "council_every"):
             _check_bound(rounds, key, f"rounds.{key}", errors, minimum=1)
+        if "retro_every" in rounds:
+            _check_bound(rounds, "retro_every", "rounds.retro_every", errors, minimum=1)
 
     pilot = m.get("pilot")
     if not isinstance(pilot, dict):

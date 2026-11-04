@@ -81,6 +81,30 @@ def reap_worktree(r, path) -> None:
         r.event("worktree_reap_failed", f"git worktree remove failed for {path}: {proc.stderr.strip()[-300:]}")
 
 
+def score_baseline(r) -> float:
+    """Score `baseline_commit` once with the locked evals and post it as the `baseline` entry.
+
+    Gives every role a real anchor (sha, score, eval detail) before the first implementor
+    turn. Runs in a throwaway worktree inside the run dir. An eval failure raises: a run
+    whose eval cannot score its own baseline must halt, not search.
+    """
+    commit = r.m["baseline_commit"]
+    worktree = make_worktree(r, "baseline", commit)
+    try:
+        proxy = evaluate.run_eval(r, "proxy_command", worktree, commit, "baseline")
+        full = evaluate.run_eval(r, "full_command", worktree, commit, "baseline")
+    finally:
+        reap_worktree(r, worktree)
+    score = float(full["score"])
+    if not evaluate.has_scored(r, "baseline", 0):  # a resume after a failed r.set must not post twice
+        evaluate.post_scored(r, agent="baseline", round=0, commit=commit, proxy_result=proxy, full_result=full)
+    # Set last: `baseline_score` is the "already done" gate, so a failed post retries on resume
+    r.set("baseline_scores", {"proxy": float(proxy["score"]), "full": score})
+    r.set("baseline_score", score)
+    r.event("baseline_scored", f"baseline {commit[:12]} full score {score:g}")
+    return score
+
+
 # --------------------------------------------------------------------------
 # small helpers
 # --------------------------------------------------------------------------
@@ -95,8 +119,11 @@ def _drop_path(drop_dir, role: str, agent: str, round_no: int) -> Path:
 
 def _model_for(r, role: str) -> str:
     models = r.m.get("models")
-    if isinstance(models, dict) and models.get(role):
-        return models[role]
+    if isinstance(models, dict):
+        if models.get(role):
+            return models[role]
+        if role == "retro" and models.get("critic"):
+            return models["critic"]  # the retro is a critic's job unless the manifest says otherwise
     return r.m.get("model", "default")
 
 
@@ -108,15 +135,18 @@ def _role_count(r, role: str, default: int = 0) -> int:
     return int((r.m.get("roles") or {}).get(role, default) or default)
 
 
-def _wait_for(proc, timeout_sec: float) -> None:
+def _wait_for(proc, timeout_sec: float) -> bool:
+    """Wait for `proc`; kill it past `timeout_sec`. Returns True if it timed out."""
     try:
         proc.wait(timeout=timeout_sec)
+        return False
     except subprocess.TimeoutExpired:
         try:
             proc.kill()
         except Exception:
             pass
         proc.wait()
+        return True
 
 
 def _poll_parallel(r, infos: list, timeout_sec: float) -> None:
@@ -282,8 +312,17 @@ def _run_implementor_turns(r, round_no: int, launch, drop_dir: Path) -> bool:
             drop_file = _drop_path(drop_dir, "implementor", agent, round_no)
             posted = agents.ingest_drop(r, role="implementor", agent=agent, round=round_no, drop_file=drop_file)
 
+            # Link the swarm's authoritative score back to the agent's own board
+            # `result` entry so shared views can rank/show the eval's number
+            # instead of the agent's self-report (see views._authoritative_scores).
+            result_entry = next((e for e in reversed(posted) if e["type"] == "result"), None)
+            board_entry_id = result_entry["id"] if result_entry else None
+
             if info["timed_out"]:
                 r.event("turn_timed_out", f"implementor {agent} round {round_no} exceeded timeout", agent)
+                evaluate.post_outcome_safely(r, agent=agent, round=round_no, commit=_head(worktree),
+                                             board_entry_id=board_entry_id, status="timed_out",
+                                             error="turn exceeded iteration_timeout_min; not scored")
                 continue
 
             bad_target = locks.check_target_locks(r, worktree)
@@ -291,14 +330,11 @@ def _run_implementor_turns(r, round_no: int, launch, drop_dir: Path) -> bool:
                 reason = f"locked files changed in {agent}'s worktree: {', '.join(bad_target)}"
                 r.set("halt", reason)
                 r.event("target_lock_violation", reason, agent)
+                evaluate.post_outcome_safely(r, agent=agent, round=round_no, commit=_head(worktree),
+                                             board_entry_id=board_entry_id, status="lock_violation",
+                                             error=reason)
                 violated = True
                 continue
-
-            # Link the swarm's authoritative score back to the agent's own board
-            # `result` entry so shared views can rank/show the eval's number
-            # instead of the agent's self-report (see views._authoritative_scores).
-            result_entry = next((e for e in reversed(posted) if e["type"] == "result"), None)
-            board_entry_id = result_entry["id"] if result_entry else None
 
             commit = util.git(worktree, "rev-parse", "HEAD")
             evaluate.score_result(r, worktree=worktree, commit=commit, agent=agent,
@@ -306,6 +342,14 @@ def _run_implementor_turns(r, round_no: int, launch, drop_dir: Path) -> bool:
         except CollabError as exc:
             reason = f"implementor {agent} round {round_no} turn failed: {exc}"
             r.event("turn_failed", reason, agent)
+            try:
+                already = evaluate.has_scored(r, agent, round_no)
+            except Exception as read_exc:
+                r.event("scored_post_failed", f"{agent} round {round_no}: could not read the board: {read_exc}", agent)
+                already = True
+            if not already:
+                evaluate.post_outcome_safely(r, agent=agent, round=round_no, commit=_head(worktree),
+                                             status="eval_failed", error=str(exc))
             if turn_id is not None:
                 r.db.execute(
                     "UPDATE turns SET is_error=1, note=? WHERE id=?",
@@ -316,6 +360,55 @@ def _run_implementor_turns(r, round_no: int, launch, drop_dir: Path) -> bool:
             reap_worktree(r, worktree)
 
     return violated
+
+
+def retro(r, round_no: int, *, launch) -> None:
+    """Run one retro turn after the round's commits are scored.
+
+    The retro writer (the critic's model unless `models.retro` says otherwise) reads this
+    round's `scored` entries against the proposals and results behind them, and posts a
+    `retro` entry: what each change taught, with shas, and what to try or stop next.
+    """
+    drop_dir = _drop_dir(r)
+    agent = "retro-1"
+    cap_reason = budget.round_cap_reason(r, round_no)
+    if cap_reason:
+        r.event("round_cap_reached", f"retro skipped: {cap_reason}")
+        return
+    if budget.agent_cap_exceeded(r, agent, round_no):
+        r.event("agent_cap_reached", f"{agent} round {round_no} at/over agent_token_cap; skipped", agent)
+        return
+    turn_id = None
+    try:
+        proc = launch(r, role="retro", agent=agent, model=_model_for(r, "retro"), round=round_no,
+                      cwd=r.repo, drop_dir=drop_dir)
+        timed_out = _wait_for(proc, _iteration_timeout_sec(r))
+        turn_id = _latest_turn_id(r, round_no, "retro", agent)
+        agents.reap_turn(r, role="retro", agent=agent, round=round_no, turn_id=turn_id,
+                         returncode=proc.returncode, timed_out=timed_out)
+        if timed_out:
+            r.event("turn_timed_out", f"retro {agent} round {round_no} exceeded timeout", agent)
+        posted = agents.ingest_drop(r, role="retro", agent=agent, round=round_no,
+                                    drop_file=_drop_path(drop_dir, "retro", agent, round_no))
+    except Exception as exc:  # a retro failure is recorded and the round goes on, never lost
+        r.event("turn_failed", f"retro {agent} round {round_no} turn failed: {type(exc).__name__}: {exc}", agent)
+        _mark_turn_error(r, turn_id, str(exc))
+        return
+    if not any(e["type"] == "retro" for e in posted):
+        r.event("retro_missing", f"round {round_no}: the retro turn posted no retro entry", agent)
+        _mark_turn_error(r, turn_id, "no retro entry posted")
+
+
+def _head(worktree):
+    """The worktree's HEAD sha for an outcome entry, or None if git cannot say."""
+    proc = util.run(["git", "-C", str(worktree), "rev-parse", "HEAD"], check=False)
+    return proc.stdout.strip() if proc.returncode == 0 and proc.stdout.strip() else None
+
+
+def _mark_turn_error(r, turn_id, note: str) -> None:
+    if turn_id is not None:
+        r.db.execute("UPDATE turns SET is_error=1, note=? WHERE id=?", (note[:2000], turn_id))
+        r.db.commit()
 
 
 def council(r, round_no: int, *, launch) -> bool:
@@ -358,6 +451,9 @@ def run_round(r, round_no: int, *, launch=agents.launch_turn) -> None:
     if _board_locked_out(r):
         return
 
+    if r.get("baseline_score") is None:
+        score_baseline(r)
+
     if round_no % int(rounds_cfg.get("strategist_every", 1)) == 0:
         _run_role_turns(r, "strategist", round_no, launch, drop_dir)
         if _board_locked_out(r):
@@ -372,11 +468,21 @@ def run_round(r, round_no: int, *, launch=agents.launch_turn) -> None:
     if violated or _board_locked_out(r):
         return
 
+    # The retro is the critic's job: a run with no critic gets none.
+    if _role_count(r, "critic") > 0 and round_no % int(rounds_cfg.get("retro_every", 1)) == 0:
+        retro(r, round_no, launch=launch)
+        if _board_locked_out(r):
+            return
+
     if round_no % int(rounds_cfg.get("council_every", 1)) == 0:
         council(r, round_no, launch=launch)
         if _board_locked_out(r):
             return
 
+    bad = board.bad_lines(r)
+    if bad and bad != r.get("board_bad_lines", 0):
+        r.event("board_bad_lines", f"{bad} board.jsonl line(s) are not well-formed entries; every reader skips them")
+        r.set("board_bad_lines", bad)
     locks.advance_board_prefix(r)
     if views.needs_compaction(r):
         views.compact(r)

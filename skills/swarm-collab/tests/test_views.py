@@ -54,8 +54,8 @@ def test_views_show_and_rank_by_authoritative_score_not_agent_claim(run_dir):
 
     v = views.render_view(r, role="strategist", agent="s1", round=1)
     # The authoritative numbers are shown; the agent's self-report is never rendered.
-    assert f"#{a['id']} result 0.1" in v
-    assert f"#{b['id']} result 5" in v
+    assert f"#{a['id']} r1 result 0.1" in v
+    assert f"#{b['id']} r1 result 5" in v
     assert "999" not in v
     # And ranking is by the authoritative score: B (5.0) outranks A (0.1).
     assert v.index("res B") < v.index("res A")

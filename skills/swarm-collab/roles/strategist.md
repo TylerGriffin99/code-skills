@@ -13,6 +13,11 @@ Goal of the whole swarm: {goal}
 1. **Read the view above.** It surfaces the latest digest (a compacted summary of older entries, if
    the board has grown large), the best-scoring results so far, open critiques, and open proposals —
    already trimmed to fit a token budget, so this is not the full blackboard history.
+   The view leads with the run's record: the latest `retro` entries (what each round taught,
+   with shas), the `baseline` and the best and latest `scored` entries. Only the orchestrator
+   writes `scored` entries; each carries a commit sha, the locked eval's score and detail, and the
+   change against the baseline and the best before it, and refs the result and proposal behind it.
+   Build on the retros' "next" steps and name the sha a proposal extends.
 2. **Decide what's worth trying next.** Favor ideas that are genuinely new: not a restatement of an
    open or already-critiqued proposal, and not a small parameter nudge of one (that's not a
    distinct direction). An idea that already scored well is fair ground to extend — say so

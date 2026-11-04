@@ -1,7 +1,7 @@
 # swarm.json and contracts
 
-The setup directory, `<repo>/docs/swarm-collab/<name>/`, holds everything `collab.py init` needs.
-Each run is created inside it as `<run-id>/`.
+The setup directory, `<project>-swarm-results/<name>/swarm/` (see `SKILL.md` for the results-folder
+layout), holds everything `collab.py init` needs. Each run is created inside it as `<run-id>/`.
 
 ```
 <setup-dir>/
@@ -10,8 +10,9 @@ Each run is created inside it as `<run-id>/`.
   adapters/         optional scripts your eval commands call (copied into the run dir, chmod +x,
                      and hash-locked as control files)
   <run-id>/         created by init: locked copy of verdict.md/swarm.json/adapters/, plus
-                     board.jsonl, ledger.sqlite, locks.json, logs/, drops/, prompts/, and the two
-                     reports meant to be kept: pilot_report.md, harvest.md
+                     board.jsonl, ledger.sqlite, locks.json, logs/, drops/, prompts/, worktrees/
+                     (one git worktree per implementor and the baseline, removed after each turn),
+                     and the two reports meant to be kept: pilot_report.md, harvest.md
 ```
 
 `collab.py init` copies `verdict.md` and `adapters/` into the run dir, writes `run_id` into its own
@@ -34,12 +35,12 @@ copy of `swarm.json`, and hash-locks the whole set (see "Locking" below). Only `
 | `budget` | yes | `{"max_usd", "max_rounds", "max_hours", "round_token_cap", "agent_token_cap"}` — see "Budget: what's enforced today" below |
 | `view` | yes | `{"token_ceiling": n, "compact_threshold_entries": n}` — `token_ceiling >= 500`; the per-agent view renderer trims lowest-priority entries until its estimate fits under this ceiling. `compact_threshold_entries` is how many live (non-digest) entries accumulate before the board is compacted into a digest |
 | `messaging` | yes | `{"per_turn_quota": n, "max_tokens": n}` — caps on `message`-type drop entries per agent turn; see "The agent drop-file contract" |
-| `eval` | yes | `{"proxy_command", "full_command", "verify_tolerance", "promote_threshold"?}` — see "The eval contract" |
-| `rounds` | yes | `{"strategist_every": n, "critic_every": n, "council_every": n}`, each `>= 1`. A role's turns run on rounds where `round_no % n == 0`. Optional `stall_rounds` (default `3`, not schema-checked) controls the no-improvement stall window |
+| `eval` | yes | `{"proxy_command", "full_command", "verify_tolerance", "promote_threshold"?, "board_keys"?}` — see "The eval contract". `board_keys` lists the eval JSON keys a `scored` entry carries as `metrics` (default: every key but `score`, capped at 1500 characters) |
+| `rounds` | yes | `{"strategist_every": n, "critic_every": n, "council_every": n}`, each `>= 1`. A role's turns run on rounds where `round_no % n == 0`. Optional `retro_every` (default `1`, `>= 1`) sets the retro turn's cadence; it runs only when `roles.critic >= 1`. Optional `stall_rounds` (default `3`, not schema-checked) controls the no-improvement stall window |
 | `pilot` | yes | `{"rounds": n}`, `n >= 1` and `<= budget.max_rounds`. `pilot_report.md` is written once, the first time `round_no >= pilot.rounds` |
 | `locked_files` | yes | paths relative to `workdir`: the scorer, eval/proxy harness, holdout access code, and anything else agents must not edit. Hash-checked against `baseline_commit` at `init`/`write_locks` time, and against every implementor's worktree after every round |
 | `strip_env` | yes | env var names removed from every role agent's process (unlock phrases, live credentials); combined with an unconditional strip of every `COLLAB_*` var |
-| `models` | no | per-role model override, e.g. `{"strategist": "opus", "implementor": "sonnet", "critic": "sonnet"}`. A role with no entry falls back to top-level `model`, then to the literal string `"default"` |
+| `models` | no | per-role model override, e.g. `{"strategist": "opus", "implementor": "sonnet", "critic": "sonnet"}`. A role with no entry falls back to top-level `model`, then to the literal string `"default"`; `retro` falls back to the `critic` entry first |
 | `model` | no | single fallback model when `models` doesn't name a role |
 | `permission_mode` | no | default `"auto"`; passed to `claude -p --permission-mode` |
 | `eval_timeout_min` | no | default `120`; timeout for `eval.proxy_command`/`eval.full_command` |
@@ -80,7 +81,8 @@ count toward the token/cost caps, so treat a run full of those events as unmeter
 - `round`, `role`, `author_agent`, `ts`: filled in by the orchestrator from the turn that produced
   the entry.
 - `type`: one of `hypothesis`, `proposal`, `result`, `critique`, `deadend`, `message`, `council`,
-  `digest`.
+  `digest`, `scored`, `retro`. Agents may not post `scored` or `digest`: the orchestrator drops
+  them (`drop_line_forbidden` event).
 - `refs`: ids of other entries this one is about (a `critique`'s target proposal/result, a
   `digest`'s archived entries).
 - `to`: agent names this entry is addressed to (only meaningful for `message`; used to route it
@@ -101,6 +103,8 @@ count toward the token/cost caps, so treat a run full of those events as unmeter
 | `message` | `{"text": "..."}`, `to: ["implementor-2"]` | Quota-limited — see "The agent drop-file contract" |
 | `council` | `{"text": "...", "terminate": true}` | Posted only during a council round (`rounds.council_every`); `terminate: true` from either the council strategist or council critic ends the run early (never a success verdict on its own — see below) |
 | `digest` | `{"text": "..."}`, `refs: [archived ids]` | Written by the orchestrator's compactor (`role: "system"`, `author_agent: "compactor"`), never by an agent |
+| `scored` | `{"text", "agent", "status", "commit", "score", "score_kind", "proxy_score", "full_score", "promoted", "no_change", "vs_baseline", "vs_best_before", "metrics", "error"?}`, `refs: [result id, proposal id...]` | Written only by the orchestrator (`role: "system"`, `author_agent: "orchestrator"`) after it scores a commit; the `baseline` one (round 0) comes before round 1's turns. `score` is the full score if promoted, else the proxy. The ledger records its content hash (meta `trusted_entries`) before the line is written; a `scored` line whose hash is not recorded there is a forgery and no view shows it. Never compacted |
+| `retro` | `{"text": "...", "learned": [...], "next": [...]}`, `refs: [scored ids]` | One per round, from the retro turn (`roles/retro.md`): what each scored change taught and what to do next. Never compacted |
 
 ## The agent drop-file contract
 
@@ -160,15 +164,20 @@ Two-tier scoring, run by `evaluate.score_result` after every implementor turn:
 2. Promote (also run `full_command` and record `full_score`, `promoted=1`) when the proxy score
    clears `eval.promote_threshold` — or, if you didn't set one, when it beats the best `proxy_score`
    recorded so far across the whole run (respecting `maximize`).
+3. Post one `scored` entry to the board with the commit sha, both scores, the eval JSON's other keys
+   as `metrics`, and the change against the baseline and the best score before this one.
 
 `evaluate.verify` separately re-runs `full_command` on a commit and compares the new score against a
 previously recorded one; `ok` is `abs(new_score - recorded) <= eval.verify_tolerance`.
 
 ## Rounds
 
-Each round runs, in order: strategist turns (if `round_no % rounds.strategist_every == 0`), critic
-turns (if `round_no % rounds.critic_every == 0`), every implementor's turn in parallel (each scored
-per "The eval contract"), then a council turn (if `round_no % rounds.council_every == 0`). Every
+Before the first round the orchestrator scores `baseline_commit` once and posts it as the `baseline`
+`scored` entry. Each round then runs, in order: strategist turns (if `round_no %
+rounds.strategist_every == 0`), critic turns (if `round_no % rounds.critic_every == 0`), every
+implementor's turn in parallel (each scored per "The eval contract", with one `scored` entry
+posted per commit), a retro turn (if `roles.critic >= 1` and `round_no % rounds.retro_every == 0`),
+then a council turn (if `round_no % rounds.council_every == 0`). Every
 implementor's worktree resets to `baseline_commit` at the start of its turn each round in this
 version — implementors do not build on a previous round's winning commit; the blackboard, not a
 carried-forward commit, is how one round's findings reach the next.

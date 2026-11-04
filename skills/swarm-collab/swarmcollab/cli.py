@@ -335,7 +335,10 @@ def cmd_board(args) -> int:
         text = body.get("text") if isinstance(body, dict) else body
         if not isinstance(text, str):
             text = json.dumps(body, sort_keys=True)
-        print(f"#{e['id']:<5} r{e['round']:<3} {e['type']:<10} {e['author_agent']:<18} {text[:120]}")
+        width = 400 if e["type"] in board.TRUSTED_TYPES else 120
+        forged = e["type"] in board.TRUSTED_TYPES and not board.is_trusted(r, e)
+        mark = "UNTRUSTED (not written by the orchestrator) " if forged else ""
+        print(f"#{e['id']:<5} r{e['round']:<3} {e['type']:<10} {e['author_agent']:<18} {mark}{text[:width]}")
     return 0
 
 

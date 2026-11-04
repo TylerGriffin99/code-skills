@@ -25,6 +25,7 @@ ROLE_PREAMBLE = {
     "strategist": "You are the strategist. Review the board and post proposals or messages.",
     "implementor": "You are an implementor. Pursue your assigned proposal and report a result.",
     "critic": "You are the critic. Critique uncritiqued proposals and results.",
+    "retro": "You are the retro writer. Post one retro entry on what this round's scored commits taught.",
 }
 
 # Vars that configure the process substituted via COLLAB_AGENT_CMD (the launch
@@ -291,13 +292,21 @@ def ingest_drop(r, *, role: str, agent: str, round: int, drop_file) -> list:
         except json.JSONDecodeError:
             r.event("drop_line_malformed", f"undecodable JSONL line from {role}/{agent} round {round}", agent)
             continue
-        if not isinstance(item, dict) or "type" not in item:
-            r.event("drop_line_malformed", f"line missing 'type' from {role}/{agent} round {round}", agent)
+        if not isinstance(item, dict) or not isinstance(item.get("type"), str):
+            r.event("drop_line_malformed", f"line missing a string 'type' from {role}/{agent} round {round}", agent)
             continue
         entry_type = item["type"]
         body = item.get("body", {})
         refs = item.get("refs")
         to = item.get("to")
+
+        if entry_type in board.SYSTEM_ONLY_TYPES or (entry_type == "retro" and role != board.RETRO_ROLE):
+            r.event(
+                "drop_line_forbidden",
+                f"{role}/{agent} round {round} posted type {entry_type!r}, which this role may not post; dropped",
+                agent,
+            )
+            continue
 
         if entry_type == "message":
             tokens = estimate_tokens(_message_text(body))
@@ -319,7 +328,7 @@ def ingest_drop(r, *, role: str, agent: str, round: int, drop_file) -> list:
         try:
             entry = board.append(
                 r, round=round, role=role, author_agent=agent, type=entry_type,
-                body=body, refs=refs, to=to,
+                body=body, refs=refs, to=to, trusted=entry_type in board.TRUSTED_TYPES,
             )
         except CollabError as exc:
             r.event(

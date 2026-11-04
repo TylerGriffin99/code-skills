@@ -12,6 +12,12 @@ Goal of the whole swarm: {goal}
 
 1. **Read the view above.** It surfaces proposals and results that have no critique referencing
    them yet, plus any messages addressed to you.
+   The view leads with the run's record: the latest `retro` entries (what each round taught,
+   with shas), the `baseline` and the best and latest `scored` entries. Only the orchestrator
+   writes `scored` entries; each carries a commit sha, the locked eval's score and detail, and the
+   change against the baseline and the best before it, and refs the result and proposal behind it.
+   Use them as evidence: a proposal that repeats a direction a retro or a scored entry already
+   ruled out deserves a `deadend`.
 2. **Challenge proposals before compute is spent on them.** For each uncritiqued proposal, judge
    whether it's worth an implementor's turn: is it distinct from what's already been tried, is its
    rationale sound, could it risk a locked file? Say so in a `critique` entry that `refs` the

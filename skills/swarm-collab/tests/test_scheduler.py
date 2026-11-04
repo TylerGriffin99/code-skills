@@ -84,6 +84,7 @@ def test_implementor_worktree_reaped_and_round_continues_when_eval_raises(run_di
     monkeypatch.setattr(scheduler.evaluate, "score_result", failing_score_result)
 
     # roles.implementor == 2 in base_manifest: both must be attempted despite the failure.
+    r.set("baseline_score", 0.0)  # baseline already scored: count only the implementors' reaps
     scheduler.run_round(r, 1, launch=fake_launch_factory(scripts))
 
     # both implementors' worktrees were reaped despite the eval failure
@@ -182,6 +183,7 @@ def test_malformed_implementor_drop_still_reaps_and_processes_others(run_dir, tm
                      (round, role, agent, model, util.now())); r.db.commit()
         return Done()
 
+    r.set("baseline_score", 0.0)  # baseline already scored: count only the implementors' reaps
     scheduler.run_round(r, 1, launch=launch)
     assert len(reaped) == 2  # both worktrees reaped despite i1's malformed line
     assert sorted(e["body"]["text"] for e in board.read(r, types=["result"])) == ["i1 ok", "i2 ok"]

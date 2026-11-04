@@ -11,7 +11,7 @@ strategist, implementor, critic — that read and write a shared, bounded blackb
 working in isolation. Implementors each test one change per round in their own worktree against a
 locked, two-tier eval (a cheap proxy, plus a full score for promoted candidates); strategists
 propose directions from what the board shows; critics challenge proposals and flag dead ends before
-compute is spent on them. A Python orchestrator (`collab.py`) owns the board, the budget, the
+compute is spent on them, and write a retro after each round's commits are scored. A Python orchestrator (`collab.py`) owns the board, the budget, the
 locking, and the harvest. It suits open-ended search where no plan can be written *and* where
 agents reacting to each other's proposals and critiques plausibly beats blind parallel search: CNN
 architecture search against a golden dataset, agent-harness prompt/tool tuning against an eval set.
@@ -20,9 +20,9 @@ plan can be written at all, it's `/ralph-loop`.
 
 `SKILL_DIR` is this file's directory. `COLLAB` is `python3 SKILL_DIR/collab.py`. The manifest
 schema, the blackboard entry envelope, the agent drop-file contract, and the eval contract — with
-two worked examples — live in [`MANIFEST.md`](MANIFEST.md). Read it before step 3. The three
-per-role operating contracts live in `roles/strategist.md`, `roles/implementor.md`, and
-`roles/critic.md`.
+two worked examples — live in [`MANIFEST.md`](MANIFEST.md). Read it before step 3. The per-role
+operating contracts live in `roles/strategist.md`, `roles/implementor.md`, `roles/critic.md`, and
+`roles/retro.md`.
 
 Argument: `$ARGUMENTS`
 
@@ -53,17 +53,54 @@ If the argument starts with a command word, run it and report. Nothing else in t
   which files changed (`COLLAB status` lists the halt reason); on the human's yes, `COLLAB relock
   <run-dir>`, then resume with `--clear-halt`.
 
-Otherwise the argument is a goal. Run the steps below. Everything this skill writes lives in the
-target repo, where the human can review and commit it:
+Otherwise the argument is a goal. Run the steps below. **All swarm work for a project lives in one
+results folder beside it**, `<project-parent>/<project>-swarm-results/` (for a project at
+`~/dev/acme`, that is `~/dev/acme-swarm-results/`). Nothing is written next to the project or
+anywhere else:
 
-- `<repo>/docs/swarm-collab/<name>/` is the **setup dir**: `verdict.md`, `swarm.json`, and an
-  optional `adapters/` for eval helper scripts. Full field reference in `MANIFEST.md`.
-- `COLLAB init` creates each run inside it: `<setup-dir>/<run-id>/`. Its reports
-  (`pilot_report.md`, `harvest.md`) are meant to be committed; its locked copy of the setup and its
-  runtime state (board, ledger, locks, logs, worktrees) are gitignored by a `.gitignore` `init`
-  writes into the run dir.
+```
+<project>-swarm-results/
+  <name>/                 the target repo for one search (a git repo; see below)
+    swarm/                the setup dir: verdict.md, swarm.json, optional adapters/
+      <run-id>/           created by COLLAB init: the run dir
+        board.jsonl       THE record of the run (see "The board" below)
+        worktrees/        one git worktree per implementor (and the baseline), removed after use
+        ledger.sqlite, locks.json, logs/, drops/, prompts/
+        pilot_report.md, harvest.md
+```
+
+- **The target repo `<name>/`.** If the search edits an existing project repo, make it a git
+  worktree of that repo on a new branch: `git -C <project> worktree add
+  <results>/<name> -b swarm/<name> <base>`. The project checkout itself is never touched. If the
+  search needs a purpose-built repo (a locked harness, a seed file, train data), `git init` it at
+  `<results>/<name>/`.
+- **The setup dir** `<name>/swarm/` holds `verdict.md`, `swarm.json`, and an optional `adapters/`
+  for eval helper scripts. Full field reference in `MANIFEST.md`. Commit it before `init`.
+- **The run dir** `<setup-dir>/<run-id>/`: its reports (`pilot_report.md`, `harvest.md`) are meant
+  to be committed; everything else, the implementor worktrees included, is gitignored by a
+  `.gitignore` `init` writes into the run dir.
+- Data the agents must not reach (a holdout) stays outside the results folder.
 
 Nothing goes under `~/.claude` except this skill itself.
+
+### The board
+
+`<run-dir>/board.jsonl` is the single record an agent (or the human) needs to make a call. In round
+order it holds:
+
+1. The **baseline** `scored` entry (round 0): the orchestrator scores `baseline_commit` with the
+   locked evals before the first turn.
+2. Each round's **proposals**, **critiques** and **dead ends** (strategist, critic).
+3. Each implementor's **result** (its own account, with refs to the proposal it tested).
+4. One orchestrator **`scored`** entry per implementor commit: the commit sha, the locked eval's
+   score (proxy, and full if promoted), the eval's own detail (its JSON keys, or `eval.board_keys`),
+   and the change against the baseline and the best score before it. Agents cannot post this type,
+   and a `scored` line not recorded in the ledger is never shown.
+5. One **`retro`** entry (the critic's model, `roles/retro.md`): what each scored change taught,
+   with shas, and what to build on or stop next.
+
+Every role's view leads with the latest retros and the baseline, best and latest `scored` entries;
+compaction never archives `scored` or `retro` entries.
 
 ## 1. Fitness review
 
@@ -91,8 +128,8 @@ Write `verdict.md`: a table of criterion, PASS/FAIL, and evidence. Then add exac
   their reason under the table.
 - `VERDICT: NOT-A-SWARM`: criterion 1 fails. Say what to use instead: `/ralph-loop` on a plan, or
   `/swarm-loop` if the goal is a search problem but collaboration (criterion 8) wouldn't help. Stop.
-- `VERDICT: NOT-YET`: another must fails. Write a draft prerequisites spec at
-  `docs/superpowers/specs/<date>-<name>-swarm-collab-prerequisites-design.md`, one requirement with
+- `VERDICT: NOT-YET`: another must fails. Write a draft prerequisites spec in the setup dir,
+  `<name>/swarm/<date>-prerequisites.md`, one requirement with
   a checkable definition of done per failed criterion. Point the human to grilling → plan →
   `/ralph-loop` on it. Stop. Fixing a scorer, a holdout, or forge-proofing is the human's reviewed
   work, never done inside this skill.
@@ -101,18 +138,16 @@ Show the human the verdict with its evidence. Continue only on GO.
 
 ## 2. Roles and eval adapters
 
-Read `roles/strategist.md`, `roles/implementor.md`, and `roles/critic.md` — they are the
+Read `roles/strategist.md`, `roles/implementor.md`, `roles/critic.md`, and `roles/retro.md` — they are the
 human-reviewed operating contract each role's turn is built from (drop-file schema, message quota,
 what to post). Adjust them for this goal's specifics if needed (the target's conventions, its fast
 test command, what a good proposal or critique looks like here); they are hash-locked as control
 files once a run starts, so get them right before `init`.
 
-**Current build note:** `agents.launch_turn` prefixes every turn's prompt with a short built-in
-line (`agents.ROLE_PREAMBLE`), not with the full text of these files, then appends the role's
-rendered board view. Treat this step as writing and locking the authoritative reference for how
-each role should behave — the fuller preamble text these files carry is not yet what an agent
-literally reads on its first line. To see exactly what an agent was sent, read
-`<run-dir>/prompts/<role>-<agent>-r<round>.prompt.md` after its turn.
+**How a turn is built:** `agents.launch_turn` renders the role's file (its `{goal}`, `{agent}`,
+`{round}` and `{view}` placeholders filled) as the whole prompt; the one-line
+`agents.ROLE_PREAMBLE` is only a fallback when a role file is missing. To see exactly what an agent
+was sent, read `<run-dir>/prompts/<role>-<agent>-r<round>.prompt.md` after its turn.
 
 Write the eval commands `swarm.json` will point `eval.proxy_command` and `eval.full_command` at —
 either plain shell, or an `adapters/` script referenced as `"$COLLAB_RUN_DIR/adapters/<name>"` (see
